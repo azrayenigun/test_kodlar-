@@ -1,0 +1,10 @@
+ana_otonomi_node:
+  ros__parameters:
+    kp_degeri: 2.0
+    hata_toleransi: 0.05
+
+task_delivery_node:
+  ros__parameters:
+    is_simulation: true  # Gazebo'da true, gerçek robotta false 
+    gripper_open_pos: 0.04
+    gripper_close_pos: 0.0
