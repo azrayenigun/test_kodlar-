@@ -1,88 +1,68 @@
 import rclpy
 from rclpy.node import Node
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from geometry_msgs.msg import Pose
+from std_msgs.msg import String, Float32
+from geometry_msgs.msg import PoseStamped 
 import time
-import math
 
-class TasimaGorevi(Node):
+class GorevYoneticisi(Node):
     def __init__(self):
         super().__init__('task_delivery_node')
         
-        self.declare_parameter('is_simulation', True) 
-        self.is_sim = self.get_parameter('is_simulation').get_parameter_value().bool_value  
-
-        if self.is_sim:
-            self.get_logger().info('>>> MOD: GAZEBO SIMULASYON') 
-            self.arm_topic = '/arm_controller/joint_trajectory' 
-            self.gripper_topic = '/gripper_controller/joint_trajectory' 
-        else:
-            self.get_logger().info('>>> MOD: REEL ROBOT (CANLI)') 
-            self.arm_topic = '/real_arm_controller/joint_trajectory' 
-            self.gripper_topic = '/real_arm_gripper_controller/joint_trajectory' 
-
+        self.mod_pub = self.create_publisher(String, 'robot_modu', 10)
         
-        self.gripper_pub = self.create_publisher(JointTrajectory, self.gripper_topic, 10) 
-        self.arm_pub = self.create_publisher(JointTrajectory, self.arm_topic, 10) 
-        self.subscription = self.create_subscription(Pose, 'camera_data', self.operasyon_baslat, 10) 
         
-        self.is_holding = False
-        self.get_logger().info('Lupus Arm: Hibrit Kontrol Sistemi Aktif.')
+        self.subscription = self.create_subscription(
+            PoseStamped, 
+            '/detected_object_pose', 
+            self.takip_et, 
+            10)
+        
+        self.mevcut_durum = "BEKLEMEDE" 
+        self.get_logger().info('Lupus Arm Görev Yöneticisi Başlatıldı. Durum: BEKLEMEDE')
 
+    def takip_et(self, msg):
+        obj_x = msg.pose.position.x
+        obj_y = msg.pose.position.y
+        obj_z = msg.pose.position.z
 
-    def ters_kinematik_hesapla(self, x, y, z):  
-        L1, L2, L3 = 0.2, 0.55, 0.45  
-        joint1 = math.atan2(y, x) 
-        r = math.sqrt(x**2 + y**2)
-        s = z - L1
-        D = (r**2 + s**2 - L2**2 - L3**2) / (2 * L2 * L3) 
-        D = max(-1.0, min(1.0, D))
-        joint3 = math.atan2(math.sqrt(1 - D**2), D)
-        joint2 = math.atan2(s, r) - math.atan2(L3 * math.sin(joint3), L2 + L3 * math.cos(joint3)) 
-        return [joint1, joint2, joint3, 0.0, 0.0, 0.0] 
+        # BURASI DEĞİŞTİ: Kendi kendine mod değiştirmemeli
+        if self.mevcut_durum == "BEKLEMEDE" :
+            if 0 < obj_z < 1.0: 
+                # Sadece log basalım, mod değiştirmeyelim
+                self.get_logger().info(f'Nesne Görüş Alanında (Mesafe: {obj_z:.2f}m). Onay Bekleniyor...')
+                # self.durum_degistir("OTONOM")  <-- BU SATIRI SİLDİK VEYA YORUMA ALDIK
+                self.mevcut_durum = "HIZALANIYOR"
 
-    def operasyon_baslat(self, msg):
-        if not self.is_holding:
-            hedef_x = msg.position.x - 0.1
-            hedef_y = msg.position.y 
-            hedef_z = msg.position.z 
+        elif self.mevcut_durum == "HIZALANIYOR":
+            # Hedef hata paylarını (tolerans) URDF hassasiyetine göre güncelledik
+            hata_x = abs(obj_x - 0.0)
+            hata_y = abs(obj_y - 0.0)
 
-            self.gripper_kontrol(0.04) 
-            time.sleep(1.5)
+            if hata_x < 0.05 and hata_y < 0.02:
+                self.get_logger().info('Hizalanma Tamam! Parça Tutuluyor...')
+                self.mevcut_durum = "TUTUYOR"
+                self.parca_tut()
 
-            acilar = self.ters_kinematik_hesapla(hedef_x, hedef_y, hedef_z) 
-            self.kol_hareket_ettir(acilar) 
-            time.sleep(4.0)
-            
-            self.gripper_kontrol(0.0) 
-            self.is_holding = True
-            time.sleep(2.0)
-            
-            self.kol_hareket_ettir([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    def durum_degistir(self, mod_adi):
+        msg = String()
+        msg.data = mod_adi
+        self.mod_pub.publish(msg)
+        self.get_logger().info(f'Robot Modu Değiştirildi: {mod_adi}')
 
-
-    def gripper_kontrol(self, aciklik):
-        msg = JointTrajectory()
-        msg.joint_names = ['left_finger_joint']
-        point = JointTrajectoryPoint()
-        point.positions = [aciklik]
-        point.time_from_start.sec = 1
-        msg.points.append(point)
-        self.gripper_pub.publish(msg)
-
-    def kol_hareket_ettir(self, pozisyonlar):
-        msg = JointTrajectory()
-        msg.joint_names = ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']
-        point = JointTrajectoryPoint()
-        point.positions = pozisyonlar
-        point.time_from_start.sec = 2
-        msg.points.append(point)
-        self.arm_pub.publish(msg)
+    def parca_tut(self):
+        self.get_logger().info('>>> GRIPPER (sag_joint) KAPATILIYOR...')
+        
+        self.durum_degistir("MANUEL") 
+        self.get_logger().info('GÖREV BAŞARIYLA TAMAMLANDI.')
+        self.mevcut_durum = "TAMAMLANDI"
 
 def main(args=None):
     rclpy.init(args=args)
-    node = TasimaGorevi()
-    rclpy.spin(node)
-    rclpy.shutdown()
-
-
+    node = GorevYoneticisi()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()

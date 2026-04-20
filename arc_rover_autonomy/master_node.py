@@ -1,84 +1,61 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import MultiThreadedExecutor
-import sys, select, termios, tty
-
-
-from arc_rover_autonomy.dummy_vision import SahteGoz
-from arc_rover_autonomy.main_autonomy import AnaBeyin
-from arc_rover_autonomy.task_delivery import TasimaGorevi
+from std_msgs.msg import Bool, String
+import sys, termios, tty, select
 
 class MasterControl(Node):
-    def __init__(self, executor, node_list):
+    def __init__(self):
         super().__init__('master_node')
-        self.executor = executor
-        self.node_list = node_list
-        self.is_running = True
-        self.settings = termios.tcgetattr(sys.stdin)
-        
-        
-        self.timer = self.create_timer(0.1, self.check_keyboard)
-        self.get_logger().info('\n' + '='*40 + '\nMASTER NODE: [s] DURDUR | [r] BASLAT | [q] CIK\n' + '='*40)
+        self.is_running = False
+        self.status_pub = self.create_publisher(Bool, 'system_active', 10)
+        self.mod_pub = self.create_publisher(String, 'robot_modu', 10)
+        self.create_timer(0.1, self.check_keyboard)
+        print("\n" + "="*30 + "\nLUPUS ARM HAZIR\n[r] Kilidi Aç\n[1] Manuel\n[h] Home\n" + "="*30)
+
+    def get_key(self):
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+            key = sys.stdin.read(1) if rlist else ''
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return key
 
     def check_keyboard(self):
         key = self.get_key()
-        if key == 's':
-            self.stop_system()
-        elif key == 'r':
-            self.start_system()
-        elif key == 'q':
-            self.get_logger().error('CIKIS YAPILIYOR...')
-            rclpy.shutdown()
-            sys.exit(0)
+        if key == 'r': self.update_state(True, "SISTEM AKTIF")
+        elif key == 's': self.update_state(False, "SISTEM DURDURULDU")
+        elif key == 'h' and self.is_running: self.send_mod("HOME")
+        elif key == 'u' and self.is_running: self.send_mod("USB_GOREVI")
+        elif key == 'k' and self.is_running: self.send_mod("KLAVYE_GOREVI")
+        elif key == '1': self.send_mod("MANUEL")
+        elif key == '2': self.send_mod("OTONOM")
 
-    def get_key(self):
-        tty.setraw(sys.stdin.fileno())
-        rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-        key = sys.stdin.read(1) if rlist else ''
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
-        return key
+    def send_mod(self, mod):
+        msg = String()
+        msg.data = mod
+        self.mod_pub.publish(msg)
+        self.get_logger().info(f'Emir: {mod}')
 
-    def stop_system(self):
-        if self.is_running:
-            self.get_logger().warn('!!! SISTEM DONDURULDU (PAUSED) !!!')
-            for node in self.node_list:
-                try:
-                    self.executor.remove_node(node)
-                except:
-                    pass
-            self.is_running = False
-
-    def start_system(self):
-        if not self.is_running:
-            self.get_logger().info('>>> SISTEM DEVAM EDIYOR (RESUMED) <<<')
-            for node in self.node_list:
-                try:
-                    self.executor.add_node(node)
-                except:
-                    pass
-            self.is_running = True
+    def update_state(self, state, log):
+        self.is_running = state
+        msg = Bool()
+        msg.data = state
+        self.status_pub.publish(msg)
+        print(f"\n>>> {log} <<<")
 
 def main(args=None):
     rclpy.init(args=args)
-    executor = MultiThreadedExecutor(num_threads=8)
-
-    goz = SahteGoz()
-    beyin = AnaBeyin()
-    tasima = TasimaGorevi()
-    node_list = [goz, beyin, tasima]
-
-    master = MasterControl(executor, node_list)
-    executor.add_node(master)
-    
-    
-    for n in node_list:
-        executor.add_node(n)
-
+    master = MasterControl()
     try:
-        executor.spin()
-    except  (KeyboardInterrupt, SystemExit):
+        rclpy.spin(master)
+    except (KeyboardInterrupt, SystemExit):
         pass
     finally:
-        if rclpy.ok():    
-            executor.shutdown()
-            rclpy.shutdown()
+        master.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

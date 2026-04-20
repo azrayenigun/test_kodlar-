@@ -1,49 +1,37 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Pose 
+from geometry_msgs.msg import PoseStamped 
+from std_msgs.msg import String, Bool
+from .moveit_bridge import LupusMoveItController
 
 class AnaBeyin(Node):
     def __init__(self):
         super().__init__('ana_otonomi_node')
+        self.robot_kol = LupusMoveItController(self)
+        self.mevcut_mod = "MANUEL" 
+        self.system_is_active = False
 
-        self.declare_parameter('kp_degeri', 1.0) 
-        self.kp = self.get_parameter('kp_degeri').get_parameter_value().double_value
+        self.vision_sub = self.create_subscription(PoseStamped, '/detected_object_pose', self.otonomi_dongusu, 10)
+        self.mod_sub = self.create_subscription(String, 'robot_modu', self.mod_degistir, 10)
+        self.status_sub = self.create_subscription(Bool, 'system_active', self.status_callback, 10)
         
-        self.subscription = self.create_subscription(Pose, 'camera_data', self.karar_ver, 10)
-        self.get_logger().info('Robot Beyni Calisiyor: P-Kontrolcu Aktif!')
+        self.get_logger().info('Lupus Beyni URDF ile Uyumlu Hale Getirildi.')
 
-    def karar_ver(self, msg):
-        
-        hedef_x = msg.position.x
-        hedef_y = msg.position.y
-        hedef_z = msg.position.z
-        
-        
-        mevcut_konum_x = 0.0
-        
-        
-        
-        hata = hedef_x - mevcut_konum_x
-        
-       
-        
-        kp = 2.0
-        hesaplanan_hiz = kp * hata
+    def status_callback(self, msg):
+        self.system_is_active = msg.data
 
-        
-        if hata > 0.05: 
-            self.get_logger().info(f'HEDEF UZAKTA! Mesafe: {hata:.2f}m | Motor Hizi: {hesaplanan_hiz:.2f}')
-            self.get_logger().info('Komut: Hedefe dogru ilerle...')
-        else:
-            
-            self.get_logger().info('HEDEFİN ÜSTÜNDEYİM! Dur ve Parçayı Tut.')
+    def mod_degistir(self, msg):
+        komut = msg.data.upper()
+        if not self.system_is_active and komut not in ["MANUEL", "OTONOM"]: return
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = AnaBeyin()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    node.destroy_node()
-    rclpy.shutdown()
+        if komut == "USB_GOREVI": self.robot_kol.gorev_usb_tak()
+        elif komut == "KLAVYE_GOREVI": self.robot_kol.gorev_tusa_bas()
+        elif komut == "HOME": self.robot_kol.go_to_named_pose("home")
+        elif komut in ["MANUEL", "OTONOM"]:
+            self.mevcut_mod = komut
+            self.get_logger().info(f'MOD GÜNCELLENDİ: {self.mevcut_mod}')
+
+    def otonomi_dongusu(self, msg):
+        if not self.system_is_active or self.mevcut_mod == "MANUEL": return
+        # Otonom takip için güvenli Z yüksekliği
+        self.robot_kol.go_to_pose(msg.pose.position.x, msg.pose.position.y, 0.30)
