@@ -25,24 +25,19 @@ setup(
     zip_safe=True,
     maintainer='azra',
     maintainer_email='azra@todo.todo',
-    description='Lupus Arm Autonomy Package - Updated with MoveIt2 Integration',
+    description='Lupus Arm Autonomy Package',
     license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            
             'yayin_yap = arc_rover_autonomy.yayin_yapan:main',
             'dinle = arc_rover_autonomy.dinleyen:main',
             'hesapla = arc_rover_autonomy.servis_node:main',
-            
             'dummy_vision = arc_rover_autonomy.dummy_vision:main',
             'main_autonomy = arc_rover_autonomy.main_autonomy:main',
             'task_delivery = arc_rover_autonomy.task_delivery:main',
             'master_node = arc_rover_autonomy.master_node:main',
             'keyboard_control = arc_rover_autonomy.keyboard_trigger:main',
-            
-            'gripper_control = arc_rover_autonomy.gripper_controller:main',
-            'moveit_test = arc_rover_autonomy.moveit_bridge:main',
         ],
     },
 )

@@ -11,6 +11,22 @@
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>trajectory_msgs</depend>
+  <depend>sensor_msgs</depend>
+  
+  <!-- MoveIt2 Bağımlılıkları -->
+  <depend>moveit_ros_planning_interface</depend>
+  <depend>moveit_msgs</depend>
+  <depend>moveit_core</depend>
+  <depend>moveit_ros_planning</depend>
+  
+  <!-- Controller Bağımlılıkları -->
+  <depend>control_msgs</depend>
+  <depend>controller_manager</depend>
+  <depend>controller_manager_msgs</depend>
+  
+  <!-- TF2 Bağımlılıkları -->
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
